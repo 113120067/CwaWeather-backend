@@ -16,12 +16,33 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * 取得高雄天氣預報
+ * 取得指定城市天氣預報
  * CWA 氣象資料開放平臺 API
  * 使用「一般天氣預報-今明 36 小時天氣預報」資料集
  */
-const getKaohsiungWeather = async (req, res) => {
+const getCityWeather = async (req, res) => {
   try {
+    // 從查詢參數或路徑參數取得城市名稱
+    const cityName = req.params.city || req.query.city;
+
+    // 支援的城市列表
+    const supportedCities = {
+      "taipei": "臺北市",
+      "newtaipei": "新北市",
+      "yilan": "宜蘭縣"
+    };
+
+    // 檢查城市是否支援
+    if (!cityName || !supportedCities[cityName.toLowerCase()]) {
+      return res.status(400).json({
+        error: "不支援的城市",
+        message: "請選擇支援的城市: taipei, newtaipei, yilan",
+        supportedCities: Object.keys(supportedCities)
+      });
+    }
+
+    const locationName = supportedCities[cityName.toLowerCase()];
+
     // 檢查是否有設定 API Key
     if (!CWA_API_KEY) {
       return res.status(500).json({
@@ -30,25 +51,25 @@ const getKaohsiungWeather = async (req, res) => {
       });
     }
 
-    // 呼叫 CWA API - 一般天氣預報（36小時）
+    // 呼叫 CWA API - 一般天氣預報(36小時!)
     // API 文件: https://opendata.cwa.gov.tw/dist/opendata-swagger.html
     const response = await axios.get(
       `${CWA_API_BASE_URL}/v1/rest/datastore/F-C0032-001`,
       {
         params: {
           Authorization: CWA_API_KEY,
-          locationName: "宜蘭縣",
+          locationName: locationName,
         },
       }
     );
 
-    // 取得高雄市的天氣資料
+    // 取得城市的天氣資料
     const locationData = response.data.records.location[0];
 
     if (!locationData) {
       return res.status(404).json({
         error: "查無資料",
-        message: "無法取得高雄市天氣資料",
+        message: `無法取得${locationName}天氣資料`,
       });
     }
 
@@ -131,9 +152,11 @@ app.get("/", (req, res) => {
   res.json({
     message: "歡迎使用 CWA 天氣預報 API",
     endpoints: {
-      kaohsiung: "/api/weather/kaohsiung",
+      weather: "/api/weather/:city (支援: taipei, newtaipei, yilan)",
+      weatherQuery: "/api/weather?city=taipei",
       health: "/api/health",
     },
+    supportedCities: ["taipei", "newtaipei", "yilan"]
   });
 });
 
@@ -141,8 +164,11 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// 取得高雄天氣預報
-app.get("/api/weather/kaohsiung", getKaohsiungWeather);
+// 取得指定城市天氣預報 (路徑參數)
+app.get("/api/weather/:city", getCityWeather);
+
+// 取得指定城市天氣預報 (查詢參數)
+app.get("/api/weather", getCityWeather);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
